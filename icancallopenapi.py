@@ -17,7 +17,7 @@ parser.add_argument("query", type=str, help="The query to ask")
 
 parsed_args = parser.parse_args()
 
-
+# 在原本的prompt前面加上"#zh-tw"讓他用中文回答
 RESPONSE_TEMPLATE_ZH = "#zh-tw\n" + RESPONSE_TEMPLATE
 
 spec = OpenAPISpec.from_file(parsed_args.spec_location)
@@ -30,6 +30,7 @@ llm = ChatOpenAI(model="gpt-3.5-turbo-0613", temperature=0)
 
 
 class RequestsWithAuthHeader(Requests):
+    """中央氣象局的API需要加上Authorization header。用這個物件包裝Requests加上需要的header"""
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.headers = {"Authorization": parsed_args.api_key}
@@ -61,6 +62,7 @@ tools = [
         description="useful for when you need to answer questions about the weather"
     )
 ]
+# 用OpenAI Functions agent
 agent = initialize_agent(tools, llm, agent=AgentType.OPENAI_FUNCTIONS, verbose=parsed_args.verbose)
 
 output = agent.run(parsed_args.query)
