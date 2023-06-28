@@ -1,10 +1,9 @@
 import argparse
+from typing import Any
 
 from langchain import PromptTemplate, LLMMathChain
 from langchain.agents import initialize_agent, AgentType
 from langchain.chains import OpenAPIEndpointChain
-from langchain.chains.api.openapi.prompts import RESPONSE_TEMPLATE
-from langchain.chains.api.openapi.response_chain import APIResponderOutputParser
 from langchain.chat_models import ChatOpenAI
 from langchain.requests import Requests
 from langchain.tools import OpenAPISpec, APIOperation, Tool
@@ -17,8 +16,6 @@ parser.add_argument("query", type=str, help="The query to ask")
 
 parsed_args = parser.parse_args()
 
-# 在原本的prompt前面加上"#zh-tw"讓他用中文回答
-RESPONSE_TEMPLATE_ZH = "#zh-tw\n" + RESPONSE_TEMPLATE
 
 spec = OpenAPISpec.from_file(parsed_args.spec_location)
 # print(f"Open API spec: {spec}")
@@ -31,9 +28,38 @@ llm = ChatOpenAI(model="gpt-3.5-turbo-0613", temperature=0)
 
 class RequestsWithAuthHeader(Requests):
     """中央氣象局的API需要加上Authorization header。用這個物件包裝Requests加上需要的header"""
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self.headers = {"Authorization": parsed_args.api_key}
+
+
+def patch(clazz, name, replacement):
+    def wrap_original(orig):
+        # when called with the original function, a new function will be returned
+        # this new function, the wrapper, replaces the original function in the class
+        # and when called it will call the provided replacement function with the
+        # original function as first argument and the remaining arguments filled in by Python
+
+        def wrapper(*args, **kwargs):
+            return replacement(orig, *args, **kwargs)
+
+        return wrapper
+
+    orig = getattr(clazz, name)
+    setattr(clazz, name, wrap_original(orig))
+
+
+def replacement_function(orig, self, **kwargs: Any):
+    # orig here is the original function, so can be called like this:
+    # orig(self, ... args ...)
+    if 'template' in kwargs:
+        kwargs['template'] = "#zh-tw\n" + kwargs['template']
+    orig(self, **kwargs)
+
+
+# Monkey patch PromptTemplate to always get Chinese results
+# https://stackoverflow.com/q/37103476
+patch(PromptTemplate, '__init__', replacement_function)
 
 
 weather_chain = OpenAPIEndpointChain.from_api_operation(
@@ -43,11 +69,6 @@ weather_chain = OpenAPIEndpointChain.from_api_operation(
     verbose=parsed_args.verbose,
     return_intermediate_steps=True,  # Return request and response text
 )
-weather_chain.api_response_chain.prompt = PromptTemplate(
-            template=RESPONSE_TEMPLATE_ZH,  # 下prompt的時候指定用中文回答
-            output_parser=APIResponderOutputParser(),
-            input_variables=["response", "instructions"],
-        )
 
 llm_math_chain = LLMMathChain.from_llm(llm=llm, verbose=parsed_args.verbose)
 tools = [
