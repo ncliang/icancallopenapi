@@ -1,7 +1,7 @@
 import argparse
 from typing import Any
 
-from langchain import PromptTemplate, LLMMathChain
+from langchain import PromptTemplate, LLMMathChain, WikipediaAPIWrapper
 from langchain.agents import initialize_agent, AgentType
 from langchain.chains import OpenAPIEndpointChain
 from langchain.chat_models import ChatOpenAI
@@ -71,6 +71,8 @@ weather_chain = OpenAPIEndpointChain.from_api_operation(
 )
 
 llm_math_chain = LLMMathChain.from_llm(llm=llm, verbose=parsed_args.verbose)
+wikipedia = WikipediaAPIWrapper(lang="zh")
+
 tools = [
     Tool(
         name="Calculator",
@@ -81,6 +83,11 @@ tools = [
         name="CWB-Weather",
         func=lambda x: weather_chain(x),
         description="useful for when you need to answer questions about the weather"
+    ),
+    Tool(
+        name="Wikipedia",
+        func=wikipedia.run,
+        description="useful for when you need to answer questions about facts"
     )
 ]
 # 用OpenAI Functions agent
