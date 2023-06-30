@@ -1,3 +1,4 @@
 langchain
 openai
 wikipedia
+google-api-python-client

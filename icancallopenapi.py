@@ -1,7 +1,7 @@
 import argparse
 from typing import Any
 
-from langchain import PromptTemplate, LLMMathChain, WikipediaAPIWrapper
+from langchain import PromptTemplate, LLMMathChain, WikipediaAPIWrapper, GoogleSearchAPIWrapper
 from langchain.agents import initialize_agent, AgentType
 from langchain.chains import OpenAPIEndpointChain
 from langchain.chat_models import ChatOpenAI
@@ -11,11 +11,11 @@ from langchain.tools import OpenAPISpec, APIOperation, Tool
 parser = argparse.ArgumentParser(description="Call Central Weather Bureau Open API from langchain")
 parser.add_argument("--api_key", type=str, required=True, help="CWB API key")
 parser.add_argument("--spec_location", type=str, required=True, help="Location of CWB Open API spec")
-parser.add_argument("--verbose", type=bool, action=argparse.BooleanOptionalAction, default=False, help="Whether to show verbose output")
+parser.add_argument("--verbose", type=bool, action=argparse.BooleanOptionalAction, default=False,
+                    help="Whether to show verbose output")
 parser.add_argument("query", type=str, help="The query to ask")
 
 parsed_args = parser.parse_args()
-
 
 spec = OpenAPISpec.from_file(parsed_args.spec_location)
 # print(f"Open API spec: {spec}")
@@ -28,6 +28,7 @@ llm = ChatOpenAI(model="gpt-3.5-turbo-0613", temperature=0)
 
 class RequestsWithAuthHeader(Requests):
     """中央氣象局的API需要加上Authorization header。用這個物件包裝Requests加上需要的header"""
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.headers = {"Authorization": parsed_args.api_key}
@@ -61,7 +62,6 @@ def replacement_function(orig, self, **kwargs: Any):
 # https://stackoverflow.com/q/37103476
 patch(PromptTemplate, '__init__', replacement_function)
 
-
 weather_chain = OpenAPIEndpointChain.from_api_operation(
     operation,
     llm,
@@ -72,6 +72,7 @@ weather_chain = OpenAPIEndpointChain.from_api_operation(
 
 llm_math_chain = LLMMathChain.from_llm(llm=llm, verbose=parsed_args.verbose)
 wikipedia = WikipediaAPIWrapper(lang="zh")
+search = GoogleSearchAPIWrapper()
 
 tools = [
     Tool(
@@ -79,17 +80,23 @@ tools = [
         func=llm_math_chain.run,
         description="useful for when you need to answer questions about math"
     ),
+    # Tool(
+    #     name="CWB-Weather",
+    #     func=lambda x: weather_chain(x),
+    #     description="useful for when you need to answer questions about the weather"
+    # ),
+    # Tool(
+    #     name="Wikipedia",
+    #     func=wikipedia.run,
+    #     description="useful for when you need to answer questions about facts"
+    # ),
     Tool(
-        name="CWB-Weather",
-        func=lambda x: weather_chain(x),
-        description="useful for when you need to answer questions about the weather"
-    ),
-    Tool(
-        name="Wikipedia",
-        func=wikipedia.run,
-        description="useful for when you need to answer questions about facts"
+        name="GoogleSearch",
+        description="useful for when you need to search the web to answer questions about facts",
+        func=search.run,
     )
 ]
+
 # 用OpenAI Functions agent
 agent = initialize_agent(tools, llm, agent=AgentType.OPENAI_FUNCTIONS, verbose=parsed_args.verbose)
 
