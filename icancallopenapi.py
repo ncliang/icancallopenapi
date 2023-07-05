@@ -8,6 +8,8 @@ from langchain.chat_models import ChatOpenAI
 from langchain.requests import Requests
 from langchain.tools import OpenAPISpec, APIOperation, Tool
 
+from formosa_foundation_model import FormosaFoundationModel
+
 parser = argparse.ArgumentParser(description="Call Central Weather Bureau Open API from langchain")
 parser.add_argument("--api_key", type=str, required=True, help="CWB API key")
 parser.add_argument("--spec_location", type=str, required=True, help="Location of CWB Open API spec")
@@ -23,7 +25,8 @@ spec = OpenAPISpec.from_file(parsed_args.spec_location)
 # 只包裝使用這一個endpoint。每個要包裝的endpoint都會是一個tool
 operation = APIOperation.from_openapi_spec(spec, "/v1/rest/datastore/F-C0032-001", "get")
 
-llm = ChatOpenAI(model="gpt-3.5-turbo-0613", temperature=0)
+# llm = ChatOpenAI(model="gpt-3.5-turbo-0613", temperature=0)
+llm = FormosaFoundationModel(temperature=0.01, max_new_tokens=1024)
 
 
 class RequestsWithAuthHeader(Requests):
@@ -80,25 +83,25 @@ tools = [
         func=llm_math_chain.run,
         description="useful for when you need to answer questions about math"
     ),
-    # Tool(
-    #     name="CWB-Weather",
-    #     func=lambda x: weather_chain(x),
-    #     description="useful for when you need to answer questions about the weather"
-    # ),
+    Tool(
+        name="CWB-Weather",
+        func=lambda x: weather_chain(x),
+        description="useful for when you need to answer questions about the weather"
+    ),
     # Tool(
     #     name="Wikipedia",
     #     func=wikipedia.run,
     #     description="useful for when you need to answer questions about facts"
     # ),
-    Tool(
-        name="GoogleSearch",
-        description="useful for when you need to search the web to answer questions about facts",
-        func=search.run,
-    )
+    # Tool(
+    #     name="GoogleSearch",
+    #     description="useful for when you need to search the web to answer questions about facts",
+    #     func=search.run,
+    # )
 ]
 
 # 用OpenAI Functions agent
-agent = initialize_agent(tools, llm, agent=AgentType.OPENAI_FUNCTIONS, verbose=parsed_args.verbose)
+agent = initialize_agent(tools, llm, agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION, verbose=parsed_args.verbose)
 
 output = agent.run(parsed_args.query)
 
